@@ -11,6 +11,7 @@ typedef torch::Scalar *scalar;
 typedef torch::optim::Optimizer *optimizer;
 typedef torch::jit::script::Module *module;
 typedef torch::jit::IValue *ivalue;
+typedef torch::jit::TypePtr *typeptr;
 #define PROTECT(x) \
   try { \
     x \
@@ -23,6 +24,7 @@ typedef void *optimizer;
 typedef void *scalar;
 typedef void *module;
 typedef void *ivalue;
+typedef void *typeptr;
 #endif
 
 char *get_and_reset_last_err(); // thread-local
@@ -226,6 +228,28 @@ void atm_named_parameters(module, void *data, void (*f)(void *, char *, tensor))
 module atm_create_for_tracing(char *modl_name, tensor *inputs, int ninputs);
 void atm_end_tracing(module m, char *fn_name, tensor *outputs, int noutputs);
 
+typeptr att_any_type();
+typeptr att_bool_type();
+typeptr att_int_type();
+typeptr att_float_type();
+typeptr att_string_type();
+typeptr att_tensor_type();
+typeptr att_tuple_type(typeptr *, int);
+typeptr att_list_type(typeptr);
+typeptr att_optional_type(typeptr);
+typeptr att_dict_type(typeptr, typeptr);
+char *att_to_string(typeptr);
+
+void att_to_list_type(typeptr, typeptr *);
+void att_to_optional_type(typeptr, typeptr *);
+int att_tuple_length(typeptr);
+void att_to_tuple_type(typeptr, typeptr *, int);
+void att_to_dict_type(typeptr, typeptr *, typeptr *);
+
+
+int att_tag(typeptr);
+void att_free(typeptr);
+
 ivalue ati_none();
 ivalue ati_tensor(tensor);
 ivalue ati_int(int64_t);
@@ -233,6 +257,7 @@ ivalue ati_double(double);
 ivalue ati_bool(int);
 ivalue ati_string(char *);
 ivalue ati_tuple(ivalue *, int);
+ivalue ati_typed_list(ivalue *, int, typeptr);
 ivalue ati_generic_list(ivalue *, int);
 ivalue ati_generic_dict(ivalue *, int);
 ivalue ati_int_list(int64_t *, int);
@@ -249,7 +274,7 @@ int ati_to_bool(ivalue);
 int ati_length(ivalue);
 int ati_tuple_length(ivalue);
 void ati_to_tuple(ivalue, ivalue *, int);
-void ati_to_generic_list(ivalue, ivalue *, int);
+void ati_to_generic_list(ivalue, ivalue *, int, typeptr*);
 void ati_to_generic_dict(ivalue, ivalue *, int);
 void ati_to_int_list(ivalue, int64_t *, int);
 void ati_to_double_list(ivalue, double *, int);

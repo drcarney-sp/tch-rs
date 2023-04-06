@@ -225,11 +225,40 @@ pub struct CIValue {
 }
 
 #[repr(C)]
+pub struct CTypePtr {
+    _private: [u8; 0],
+}
+
+#[repr(C)]
 pub struct CModule_ {
     _private: [u8; 0],
 }
 
 extern "C" {
+    // constructors
+    pub fn att_any_type() -> *mut CTypePtr;
+    pub fn att_bool_type() -> *mut CTypePtr;
+    pub fn att_int_type() -> *mut CTypePtr;
+    pub fn att_float_type() -> *mut CTypePtr;
+    pub fn att_string_type() -> *mut CTypePtr;
+    pub fn att_tensor_type() -> *mut CTypePtr;
+    pub fn att_tuple_type(v: *const *mut CTypePtr, n: c_int) -> *mut CTypePtr;
+    pub fn att_list_type(t: *mut CTypePtr) -> *mut CTypePtr;
+    pub fn att_optional_type(t: *mut CTypePtr) -> *mut CTypePtr;
+    pub fn att_dict_type(k: *mut CTypePtr, v: *mut CTypePtr) -> *mut CTypePtr;
+
+    // destructors
+    pub fn att_tag(t: *mut CTypePtr) -> c_int;
+    pub fn att_to_optional_type(t: *mut CTypePtr, output: *mut *mut CTypePtr);
+    pub fn att_to_list_type(t: *mut CTypePtr, output: *mut *mut CTypePtr);
+    pub fn att_to_dict_type(t: *mut CTypePtr, k: *mut *mut CTypePtr, k: *mut *mut CTypePtr);
+    pub fn att_tuple_length(t: *mut CTypePtr) -> c_int;
+    pub fn att_to_tuple_type(t: *mut CTypePtr, outputs: *mut *mut CTypePtr, n: c_int);
+
+    // helpers
+    pub fn att_free(t: *mut CTypePtr);
+    pub fn att_to_string(arg: *mut CTypePtr) -> *mut c_char;
+
     // Constructors
     pub fn ati_none() -> *mut CIValue;
     pub fn ati_bool(b: c_int) -> *mut CIValue;
@@ -239,6 +268,7 @@ extern "C" {
     pub fn ati_string(s: *const c_char) -> *mut CIValue;
     pub fn ati_tuple(v: *const *mut CIValue, n: c_int) -> *mut CIValue;
     pub fn ati_generic_list(v: *const *mut CIValue, n: c_int) -> *mut CIValue;
+    pub fn ati_typed_list(v: *const *mut CIValue, n: c_int, t: *mut CTypePtr) -> *mut CIValue;
     pub fn ati_generic_dict(v: *const *mut CIValue, n: c_int) -> *mut CIValue;
     pub fn ati_int_list(v: *const i64, n: c_int) -> *mut CIValue;
     pub fn ati_double_list(v: *const f64, n: c_int) -> *mut CIValue;
@@ -257,7 +287,12 @@ extern "C" {
     pub fn ati_length(arg: *mut CIValue) -> c_int;
     pub fn ati_tuple_length(arg: *mut CIValue) -> c_int;
     pub fn ati_to_tuple(arg: *mut CIValue, outputs: *mut *mut CIValue, n: c_int);
-    pub fn ati_to_generic_list(arg: *mut CIValue, outputs: *mut *mut CIValue, n: c_int);
+    pub fn ati_to_generic_list(
+        arg: *mut CIValue,
+        outputs: *mut *mut CIValue,
+        n: c_int,
+        t: *mut *mut CTypePtr,
+    );
     pub fn ati_to_generic_dict(arg: *mut CIValue, outputs: *mut *mut CIValue, n: c_int);
     pub fn ati_to_int_list(arg: *mut CIValue, outputs: *mut i64, n: c_int);
     pub fn ati_to_double_list(arg: *mut CIValue, outputs: *mut f64, n: c_int);

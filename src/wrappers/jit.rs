@@ -8,6 +8,130 @@ use std::convert::TryFrom;
 use torch_sys::*;
 
 /// Argument and output values for JIT models.
+#[derive(Debug, PartialEq, Clone)]
+#[non_exhaustive]
+pub enum TypePtr {
+    Any,
+    Tensor,
+    Double,
+    Int,
+    Bool,
+    String,
+    Tuple(Vec<TypePtr>),
+    List(Box<TypePtr>),
+    Optional(Box<TypePtr>),
+    Dict(Box<TypePtr>, Box<TypePtr>),
+}
+
+impl TypePtr {
+    #![allow(unused_unsafe)]
+
+    pub fn to_str(&self) -> Result<String, TchError> {
+        let c = self.to_c()?;
+        let ptr = unsafe_torch_err!(att_to_string(c));
+        let string = match unsafe { ptr_to_string(ptr) } {
+            None => return Err(TchError::Kind("nullptr representation".to_string())),
+            Some(s) => s,
+        };
+        Ok(string)
+    }
+
+    pub(super) fn to_c(&self) -> Result<*mut CTypePtr, TchError> {
+        let c = unsafe_torch_err!(match self {
+            TypePtr::Any => att_any_type(),
+            TypePtr::Tensor => att_tensor_type(),
+            TypePtr::Double => att_float_type(),
+            TypePtr::Int => att_int_type(),
+            TypePtr::Bool => att_bool_type(),
+            TypePtr::String => att_string_type(),
+            TypePtr::List(t) => {
+                let t_c = t.to_c()?;
+                let res = att_list_type(t_c);
+                att_free(t_c);
+                res
+            }
+            TypePtr::Optional(t) => {
+                let t_c = t.to_c()?;
+                let res = att_optional_type(t_c);
+                att_free(t_c);
+                res
+            }
+            TypePtr::Dict(k, v) => {
+                let k_c = k.to_c()?;
+                let v_c = v.to_c()?;
+                let res = att_dict_type(k_c, v_c);
+                att_free(k_c);
+                att_free(v_c);
+                res
+            }
+            TypePtr::Tuple(v) => {
+                let v = v.iter().map(Self::to_c).collect::<Result<Vec<_>, TchError>>()?;
+                let res = att_tuple_type(v.as_ptr(), v.len() as c_int);
+                for x in v {
+                    att_free(x);
+                }
+                res
+            }
+        });
+        Ok(c)
+    }
+
+    pub(super) fn of_c(c_typeptr: *mut CTypePtr) -> Result<Self, TchError> {
+        let tag = unsafe_torch_err!(att_tag(c_typeptr));
+        /*
+           case torch::jit::TypeKind::AnyType: return 0;
+        case torch::jit::TypeKind::IntType: return 1;
+        case torch::jit::TypeKind::BoolType: return 2;
+        case torch::jit::TypeKind::FloatType: return 3;
+        case torch::jit::TypeKind::StringType: return 4;
+        case torch::jit::TypeKind::DictType: return 5;
+        case torch::jit::TypeKind::TupleType: return 6;
+        case torch::jit::TypeKind::ListType: return 7;
+        case torch::jit::TypeKind::OptionalType: return 8;
+         */
+        let v = match tag {
+            0 => TypePtr::Any,
+            1 => TypePtr::Int,
+            2 => TypePtr::Bool,
+            3 => TypePtr::Double,
+            4 => TypePtr::String,
+            5 => {
+                let mut k = std::ptr::null_mut::<CTypePtr>();
+                let mut v = std::ptr::null_mut::<CTypePtr>();
+                unsafe_torch_err!(att_to_dict_type(c_typeptr, &mut k, &mut v));
+                let k = Self::of_c(k)?;
+                let v = Self::of_c(v)?;
+                TypePtr::Dict(Box::new(k), Box::new(v))
+            }
+            6 => {
+                let len = unsafe_torch_err!(att_tuple_length(c_typeptr));
+                let mut c_values: Vec<_> =
+                    (0..len).map(|_| std::ptr::null_mut::<CTypePtr>()).collect();
+                unsafe_torch_err!(att_to_tuple_type(c_typeptr, c_values.as_mut_ptr(), len));
+                let vec: Result<Vec<_>, _> =
+                    c_values.iter().map(|&c_ivalue| (Self::of_c(c_ivalue))).collect();
+                TypePtr::Tuple(vec?)
+            }
+            7 => {
+                let mut k = std::ptr::null_mut::<CTypePtr>();
+                unsafe_torch_err!(att_to_list_type(c_typeptr, &mut k));
+                let k = Self::of_c(k)?;
+                TypePtr::List(Box::new(k))
+            }
+            8 => {
+                let mut k = std::ptr::null_mut::<CTypePtr>();
+                unsafe_torch_err!(att_to_optional_type(c_typeptr, &mut k));
+                let k = Self::of_c(k)?;
+                TypePtr::Optional(Box::new(k))
+            }
+            _ => return Err(TchError::Kind(format!("unhandled tag {tag}"))),
+        };
+        unsafe_torch_err!(att_free(c_typeptr));
+        Ok(v)
+    }
+}
+
+/// Argument and output values for JIT models.
 #[derive(Debug, PartialEq)]
 #[non_exhaustive]
 pub enum IValue {
@@ -23,6 +147,7 @@ pub enum IValue {
     String(String),
     StringList(Vec<String>),
     TensorList(Vec<crate::Tensor>),
+    TypedList(Vec<IValue>, TypePtr),
     GenericList(Vec<IValue>),
     // We use a vec to represent dictionaries as f64 does not implement
     // Eq or Hash out of the box in rust. TODO: improve this?
@@ -46,6 +171,7 @@ impl IValue {
             IValue::StringList(_) => "StringList",
             IValue::TensorList(_) => "TensorList",
             IValue::GenericList(_) => "GenericList",
+            IValue::TypedList(_, _) => "TypedList",
             IValue::GenericDict(_) => "GenericDict",
             IValue::Object(_) => "Object",
         }
@@ -264,6 +390,16 @@ impl IValue {
                 }
                 list
             }
+            IValue::TypedList(v, t) => {
+                let v = v.iter().map(Self::to_c).collect::<Result<Vec<_>, TchError>>()?;
+                let t = t.to_c()?;
+                let list = ati_typed_list(v.as_ptr(), v.len() as c_int, t);
+                for x in v {
+                    ati_free(x);
+                }
+                att_free(t);
+                list
+            }
             IValue::IntList(v) => ati_int_list(v.as_ptr(), v.len() as c_int),
             IValue::DoubleList(v) => ati_double_list(v.as_ptr(), v.len() as c_int),
             IValue::BoolList(v) => {
@@ -370,12 +506,24 @@ impl IValue {
             }
             12 => {
                 let len = unsafe_torch_err!(ati_length(c_ivalue));
+                let mut t = std::ptr::null_mut::<CTypePtr>();
                 let mut c_ivalues: Vec<_> =
                     (0..len).map(|_| std::ptr::null_mut::<CIValue>()).collect();
-                unsafe_torch_err!(ati_to_generic_list(c_ivalue, c_ivalues.as_mut_ptr(), len));
+                unsafe_torch_err!(ati_to_generic_list(
+                    c_ivalue,
+                    c_ivalues.as_mut_ptr(),
+                    len,
+                    &mut t
+                ));
                 let vec: Result<Vec<_>, _> =
                     c_ivalues.iter().map(|&c_ivalue| (Self::of_c(c_ivalue))).collect();
-                IValue::GenericList(vec?)
+                let vec = vec?;
+                let type_ptr = TypePtr::of_c(t)?;
+                let type_ptr = match type_ptr {
+                    TypePtr::List(x) => *x,
+                    ptr => return Err(TchError::Kind(format!("unexpected list type {:?}", ptr))),
+                };
+                IValue::TypedList(vec, type_ptr)
             }
             13 => {
                 let len = unsafe_torch_err!(ati_length(c_ivalue));

@@ -1333,6 +1333,213 @@ ivalue ati_string(char *s) {
   return nullptr;
 }
 
+void att_free(typeptr i) {
+  // copy pointer out for deletion
+  auto x = *i;
+  delete[](i);
+}
+
+int att_tag(typeptr i) {
+  PROTECT(
+    auto kind = i->get()->kind();
+    switch(kind) {
+      case torch::jit::TypeKind::AnyType: return 0;
+      case torch::jit::TypeKind::IntType: return 1;
+      case torch::jit::TypeKind::BoolType: return 2;
+      case torch::jit::TypeKind::FloatType: return 3;
+      case torch::jit::TypeKind::StringType: return 4;
+      case torch::jit::TypeKind::DictType: return 5;
+      case torch::jit::TypeKind::TupleType: return 6;
+      case torch::jit::TypeKind::ListType: return 7;
+      case torch::jit::TypeKind::OptionalType: return 8;
+    }
+    auto err = std::string("unsupported tag ");
+    err += typeKindToString(kind);
+    // throw std::invalid_argument(("unsupported tag " + typeKindToString(kind)).c_str());
+    throw std::invalid_argument(err.c_str());
+    return -1;
+  )
+  return -1;
+}
+
+char *att_to_string(typeptr i) {
+  PROTECT(
+    auto str = i->get()->str();
+    return strdup(str.c_str());
+  )
+  return nullptr;
+}
+
+void att_to_list_type(typeptr t, typeptr * out) {
+  PROTECT(
+    auto kind = t->get()->kind();
+    if (kind !=  torch::jit::TypeKind::ListType) {
+      throw std::invalid_argument("unexpected list type");
+    }
+    auto casted = t->get()->castRaw<torch::jit::ListType>();
+    auto wrapper = new torch::jit::TypePtr[1];
+    wrapper[0] = casted->getElementType();
+    *out = wrapper;
+  )
+}
+
+void att_to_optional_type(typeptr t, typeptr * out) {
+  PROTECT(
+    auto kind = t->get()->kind();
+    if (kind !=  torch::jit::TypeKind::OptionalType) {
+      throw std::invalid_argument("unexpected list type");
+    }
+    auto casted = t->get()->castRaw<torch::jit::ListType>();
+    auto wrapper = new torch::jit::TypePtr[1];
+    wrapper[0] = casted->getElementType();
+    *out = wrapper;
+  )
+}
+
+void att_to_dict_type(typeptr t, typeptr * k, typeptr * v) {
+  PROTECT(
+    auto kind = t->get()->kind();
+    if (kind !=  torch::jit::TypeKind::DictType) {
+      throw std::invalid_argument("unexpected list type");
+    }
+    auto casted = t->get()->castRaw<torch::jit::DictType>();
+    auto k_wrapper = new torch::jit::TypePtr[1];
+    k_wrapper[0] = casted->getKeyType();
+    *k = k_wrapper;
+    auto v_wrapper = new torch::jit::TypePtr[1];
+    v_wrapper[0] = casted->getValueType();
+    *v = v_wrapper;
+  )
+}
+
+int att_tuple_length(typeptr t) {
+  PROTECT(
+    auto kind = t->get()->kind();
+    if (kind !=  torch::jit::TypeKind::TupleType) {
+      throw std::invalid_argument("unexpected list type");
+    }
+    auto casted = t->get()->castRaw<torch::jit::TupleType>();
+    auto vec = casted->elements();
+    return vec.size();
+  )
+  return 0;
+}
+
+void att_to_tuple_type(typeptr t, typeptr * outputs, int noutputs) {
+  PROTECT(
+    auto kind = t->get()->kind();
+    if (kind !=  torch::jit::TypeKind::TupleType) {
+      throw std::invalid_argument("unexpected list type");
+    }
+    auto casted = t->get()->castRaw<torch::jit::TupleType>();
+    auto vec = casted->elements();
+    if (vec.size() != noutputs) {
+      throw std::invalid_argument("unexpected list size");
+    }
+    for (int i = 0; i < noutputs; ++i) {
+      auto wrapper = new torch::jit::TypePtr[1];
+      wrapper[0] = vec[i];
+      outputs[i] = wrapper;
+    }
+  )
+}
+
+typeptr att_any_type() {
+  PROTECT(
+    auto wrapper = new torch::jit::TypePtr[1];
+    wrapper[0] = c10::AnyType::get();
+    return wrapper;
+  )
+  return nullptr;
+}
+
+typeptr att_bool_type() {
+  PROTECT(
+    auto wrapper = new torch::jit::TypePtr[1];
+    wrapper[0] = c10::BoolType::get();
+    return wrapper;
+  )
+  return nullptr;
+}
+
+typeptr att_string_type() {
+  PROTECT(
+    auto wrapper = new torch::jit::TypePtr[1];
+    wrapper[0] = c10::StringType::get();
+    return wrapper;
+  )
+  return nullptr;
+}
+
+typeptr att_int_type() {
+  PROTECT(
+    auto wrapper = new torch::jit::TypePtr[1];
+    wrapper[0] = c10::IntType::get();
+    return wrapper;
+  )
+  return nullptr;
+}
+
+typeptr att_float_type() {
+  PROTECT(
+    auto wrapper = new torch::jit::TypePtr[1];
+    wrapper[0] = c10::FloatType::get();
+    return wrapper;
+  )
+  return nullptr;
+}
+
+typeptr att_tensor_type() {
+  PROTECT(
+    auto wrapper = new torch::jit::TypePtr[1];
+    wrapper[0] = c10::TensorType::get();
+    return wrapper;
+  )
+  return nullptr;
+}
+
+typeptr att_tuple_type(typeptr * types, int nvalues) {
+  PROTECT(
+    vector<torch::jit::TypePtr> vec;
+    for (int i = 0; i < nvalues; ++i) vec.push_back(*(types[i]));
+    auto ptr = torch::jit::TupleType::create(vec);
+    auto wrapper = new torch::jit::TypePtr[1];
+    wrapper[0] = ptr;
+    return wrapper;
+  )
+  return nullptr;
+}
+
+typeptr att_list_type(typeptr type) {
+  PROTECT(
+    auto ptr = torch::jit::ListType::create(*type);
+    auto wrapper = new torch::jit::TypePtr[1];
+    wrapper[0] = ptr;
+    return wrapper;
+  )
+  return nullptr;
+}
+
+typeptr att_optional_type(typeptr type)  {
+  PROTECT(
+    auto ptr = torch::jit::OptionalType::create(*type);
+    auto wrapper = new torch::jit::TypePtr[1];
+    wrapper[0] = ptr;
+    return wrapper;
+  )
+  return nullptr;
+}
+
+typeptr att_dict_type(typeptr k, typeptr v)  {
+  PROTECT(
+    auto ptr = torch::jit::DictType::create(*k, *v);
+    auto wrapper = new torch::jit::TypePtr[1];
+    wrapper[0] = ptr;
+    return wrapper;
+  )
+  return nullptr;
+}
+
 ivalue ati_none() {
   PROTECT(
     return new torch::jit::IValue();
@@ -1345,6 +1552,15 @@ ivalue ati_tuple(ivalue *is, int nvalues) {
     vector<torch::jit::IValue> vec;
     for (int i = 0; i < nvalues; ++i) vec.push_back(*(is[i]));
     return new torch::jit::IValue(torch::ivalue::Tuple::create(vec));
+  )
+  return nullptr;
+}
+
+ivalue ati_typed_list(ivalue * is, int nvalues, typeptr type) {
+  PROTECT(
+    c10::List<torch::jit::IValue> vec(*type);
+    for (int i = 0; i < nvalues; ++i) vec.push_back(*(is[i]));
+    return new torch::jit::IValue(c10::List<torch::jit::IValue>(vec));
   )
   return nullptr;
 }
@@ -1524,8 +1740,12 @@ void ati_to_tuple(ivalue i,
 
 void ati_to_generic_list(ivalue i,
                          ivalue *outputs,
-                         int noutputs) {
+                         int noutputs,
+                         typeptr* t) {
   PROTECT(
+    auto wrapper = new torch::jit::TypePtr[1];
+    wrapper[0] = i->type();
+    *t = wrapper;
     auto vec = i->toList();
     if (vec.size() != noutputs) {
       throw std::invalid_argument("unexpected list size");
