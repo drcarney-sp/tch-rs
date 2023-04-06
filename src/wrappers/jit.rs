@@ -214,7 +214,9 @@ where
     type Error = TchError;
     fn try_from(value: IValue) -> Result<Self, TchError> {
         match value {
-            IValue::GenericList(mut vec) | IValue::Tuple(mut vec) => {
+            IValue::TypedList(mut vec, _)
+            | IValue::GenericList(mut vec)
+            | IValue::Tuple(mut vec) => {
                 if vec.len() == 2 {
                     let t2 = T2::try_from(vec.swap_remove(1)).map_err(Into::into)?;
                     let t1 = T1::try_from(vec.swap_remove(0)).map_err(Into::into)?;
@@ -246,7 +248,9 @@ where
     type Error = TchError;
     fn try_from(value: IValue) -> Result<Self, TchError> {
         match value {
-            IValue::GenericList(mut vec) | IValue::Tuple(mut vec) => {
+            IValue::TypedList(mut vec, _)
+            | IValue::GenericList(mut vec)
+            | IValue::Tuple(mut vec) => {
                 if vec.len() == 3 {
                     let t3 = T3::try_from(vec.swap_remove(2)).map_err(Into::into)?;
                     let t2 = T2::try_from(vec.swap_remove(1)).map_err(Into::into)?;
@@ -281,7 +285,9 @@ where
     type Error = TchError;
     fn try_from(value: IValue) -> Result<Self, TchError> {
         match value {
-            IValue::GenericList(mut vec) | IValue::Tuple(mut vec) => {
+            IValue::TypedList(mut vec, _)
+            | IValue::GenericList(mut vec)
+            | IValue::Tuple(mut vec) => {
                 if vec.len() == 4 {
                     let t4 = T4::try_from(vec.swap_remove(3)).map_err(Into::into)?;
                     let t3 = T3::try_from(vec.swap_remove(2)).map_err(Into::into)?;
