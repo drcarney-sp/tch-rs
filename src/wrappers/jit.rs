@@ -361,7 +361,8 @@ impl_from!(Vec<f64>, DoubleList);
 impl_from!(Vec<bool>, BoolList);
 impl_from!(Vec<String>, StringList);
 impl_from!(Vec<crate::Tensor>, TensorList);
-impl_from!(Vec<IValue>, GenericList);
+// impl_from!(Vec<IValue>, GenericList);
+// impl_from!(Vec<IValue>, TypedList);
 impl_from!(Vec<(IValue, IValue)>, GenericDict);
 
 impl From<&str> for IValue {
